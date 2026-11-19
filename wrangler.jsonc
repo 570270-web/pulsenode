@@ -1,0 +1,20 @@
+{
+  // Local Workers dev config. `npm run build:worker` produces dist/worker.js.
+  "name": "proxylab",
+  "main": "dist/worker.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  // Cookie jars are stored in D1 on Cloudflare (see worker/jar.js).
+  // Create your own database, then put its id here:
+  //   npx wrangler d1 create proxylab
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "proxylab",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

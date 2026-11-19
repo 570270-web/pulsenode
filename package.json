@@ -1,0 +1,23 @@
+{
+  "name": "proxylab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "URL-rewriting web proxy, built to learn how proxied browsing works",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build:worker": "esbuild worker/index.js --bundle --format=esm --target=es2022 --outfile=dist/worker.js",
+    "dev:worker": "npx --yes wrangler@4 dev --ip 0.0.0.0 --port 8787"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
