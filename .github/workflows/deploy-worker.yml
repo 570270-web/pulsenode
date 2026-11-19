@@ -1,0 +1,56 @@
+# Deploy ProxyLab's Cloudflare Worker on every push to main.
+#
+# One-time setup (repo → Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   token with the "Edit Cloudflare Workers" template
+#                          (Workers Scripts:Edit, D1:Edit for the first deploy)
+#   CLOUDFLARE_ACCOUNT_ID  the account id from the Cloudflare dashboard URL
+#
+# Also replace the placeholder `database_id` in wrangler.jsonc with the real
+# one printed by `npx wrangler d1 create proxylab`; otherwise the deploy stops
+# with "Couldn't find a D1 DB with the id".
+
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys race for the same Worker.
+concurrency:
+  group: deploy-worker-main
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` installs exactly what package-lock.json pins and fails if the
+      # lockfile and package.json disagree, which is the point of keeping it.
+      - name: Install dependencies
+        run: npm ci
+
+      # esbuild bundles worker/index.js (plus the shared modules in src/) into
+      # dist/worker.js, which is the file wrangler.jsonc points at.
+      - name: Build Worker bundle
+        run: npm run build:worker
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
