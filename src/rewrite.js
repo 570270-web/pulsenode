@@ -3,14 +3,18 @@ import * as cheerio from 'cheerio';
 import { CLIENT_SCRIPT } from './client-script.js';
 import { rewriteCss, rewriteSrcset } from './css.js';
 import { CSP_EQUIVS, URL_ATTRS, isEmbedGuard, proxiedRefreshContent, proxyTarget } from './rewrite-plan.js';
-import { resolveUrl } from './url.js';
+import { proxyBasePath, resolveUrl } from './url.js';
 
 /**
  * Rewrite one HTML document so that it can be served from our own origin.
  * `finalUrl` must be the URL after redirects, so relative paths resolve right.
  * The rules live in rewrite-plan.js; this file is only the cheerio walk.
+ *
+ * `nested` marks a document loaded into a frame; it gets its own <base href> so
+ * relative URLs it builds at runtime stay on its proxied directory (worker/html.js
+ * does the same for the Worker runtime).
  */
-export function rewriteHtml(html, finalUrl) {
+export function rewriteHtml(html, finalUrl, { nested = false } = {}) {
   const $ = cheerio.load(html);
 
   // A <base href> changes what every relative URL means; honour it, then drop it.
@@ -31,6 +35,8 @@ export function rewriteHtml(html, finalUrl) {
   $('[referrerpolicy]').removeAttr('referrerpolicy');
 
   $('head').prepend(CLIENT_SCRIPT);
+  const baseTag = nested ? proxyBasePath(finalUrl) : null;
+  if (baseTag) $('head').prepend(`<base href="${baseTag.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">`);
 
   // A guard that refuses to let the site's own frame run here (see
   // isEmbedGuard) is removed before the URL pass rewrites its src.
