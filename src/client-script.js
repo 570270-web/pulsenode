@@ -238,6 +238,85 @@ const CODE = `
     }
   }
 
+  /*
+   * A message from one of our own frames still says it came from us.
+   *
+   * crazygames decides whether a gameframe message is genuine by comparing the
+   * event origin's host with games.crazygames.com (its isMessageFromGameframe).
+   * Every frame here is served from THIS origin, so that check failed and the
+   * like, dislike, share and fullscreen events the game sends were dropped.
+   *
+   * The sender is one of our frames and therefore readable, so the site it
+   * stands for is the truthful answer. Only a message whose raw origin is ours
+   * is touched: a real third-party frame keeps its own origin.
+   */
+  var messageOriginDescriptor = Object.getOwnPropertyDescriptor(MessageEvent.prototype, 'origin');
+  if (messageOriginDescriptor && messageOriginDescriptor.get) {
+    try {
+      Object.defineProperty(MessageEvent.prototype, 'origin', {
+        configurable: true,
+        enumerable: messageOriginDescriptor.enumerable,
+        get: function () {
+          var raw = messageOriginDescriptor.get.call(this);
+          if (raw !== location.origin) return raw;
+          var sender = null;
+          try {
+            sender = this.source;
+          } catch (error) {
+            return raw;
+          }
+          if (!sender) return raw;
+          try {
+            return siteOriginOf(sender.location.href) || raw;
+          } catch (error) {
+            // A cross-origin sender: its own origin is the right answer anyway.
+            return raw;
+          }
+        },
+        set: messageOriginDescriptor.set,
+      });
+    } catch (error) {
+      // Not redefinable here; the browser's own value stays.
+    }
+  }
+
+  // The site this document's parent frame stands for, or null when there is no
+  // parent of ours. A frame that answers its portal names the PORTAL's origin as
+  // the target, not its own.
+  var parentSiteOrigin = function () {
+    try {
+      if (window.parent && window.parent !== window) return siteOriginOf(window.parent.location.href);
+    } catch (error) {
+      // A cross-origin parent: only this document's own site can be named.
+    }
+    return null;
+  };
+
+  /*
+   * The mirror image: a page that names the site's own address as targetOrigin.
+   *
+   * The browser will not deliver a message to a window whose origin is neither
+   * a wildcard nor the one named, and inside the proxy that named address is us. Only
+   * the two addresses a document here can legitimately mean are translated —
+   * the site it is served for and the one its parent frame stands for.
+   */
+  var postMessageOriginal = window.postMessage;
+  if (postMessageOriginal) {
+    window.postMessage = function (message, targetOrigin) {
+      var args = Array.prototype.slice.call(arguments);
+      if (typeof targetOrigin === 'string' && targetOrigin !== '*' && targetOrigin !== location.origin) {
+        var named = null;
+        try {
+          named = new URL(targetOrigin).origin;
+        } catch (error) {
+          named = null;
+        }
+        if (named && (named === siteOrigin || named === parentSiteOrigin())) args[1] = location.origin;
+      }
+      return postMessageOriginal.apply(this, args);
+    };
+  }
+
   // Same shape the server produces: /_p/<base64url origin><target path>.
   var proxied = (url) => '/_p/' + encode(url.origin) + url.pathname + url.search + url.hash;
 
