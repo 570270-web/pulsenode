@@ -6,7 +6,7 @@ import { isDroppedHeader } from '../src/response-headers.js';
 import { fallbackTarget, isDocumentRequest } from '../src/root-fallback.js';
 import { challengeMessage, isChallengePage, redirectStatus, upstreamHeaders } from '../src/upstream.js';
 import { SITE_PARAM, isBlockedUrl, normalizeInputUrl, proxyPathFor, resolveUrl, targetFromProxyPath } from '../src/url.js';
-import { rewriteHtml } from './html.js';
+import { rewriteHtml, rewriteHtmlResponse } from './html.js';
 import { loadJar, saveJar } from './jar.js';
 import { searchWeb } from './search.js';
 
@@ -114,6 +114,19 @@ async function proxy(request, requestUrl, env, explicitTarget) {
   const kind = upstreamType.toLowerCase();
 
   if (kind.includes('text/html') || kind.includes('application/xhtml')) {
+    // A document the browser is going to render needs no look at the body first:
+    // the bytes go from the site through HTMLRewriter to the browser while the
+    // document is still arriving. Everything below has to read the body, and
+    // stays buffered because of it — a bot wall is recognised by its text, and a
+    // script labelled text/html is passed on undecoded.
+    if (upstream.ok && upstream.body && requestType === 'page') {
+      const finalUrl = upstream.url || target;
+      return withSession(
+        html(rewriteHtmlResponse(upstream, finalUrl).body, upstream.status),
+        isDocument ? new URL(finalUrl).origin : null,
+      );
+    }
+
     const raw = await textWithCharset(upstream);
 
     // Sites label more than HTML as text/html: JSON (naver's /nvhaproxy) and even
