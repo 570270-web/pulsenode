@@ -10,21 +10,50 @@ export const PROXY_PATH = '/_p/';
  */
 export const SITE_PARAM = '_pl';
 
+/**
+ * Encoding and decoding are the hottest string work in the proxy: one page's
+ * markup repeats the same origin token hundreds of times, and every request
+ * decodes the token in its own path.
+ *
+ * So both directions are memoised, and the TextEncoder is built once instead of
+ * per call. A Cloudflare Worker gets 10 ms of CPU per request on the free plan,
+ * and this is where a large document was spending it.
+ */
+const CACHE_LIMIT = 512;
+const tokens = new Map();
+const origins = new Map();
+const encoder = new TextEncoder();
+
 /** base64url without Buffer, so the same code runs on Node and on Workers. */
 function encode(text) {
   let binary = '';
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  for (const byte of encoder.encode(text)) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+function remember(cache, key, value) {
+  // A clear is a cheap cap: the cache only has to hold the origins one page uses.
+  if (cache.size >= CACHE_LIMIT) cache.clear();
+  cache.set(key, value);
+  return value;
+}
+
+/** The token for one origin, reused across every link that points at it. */
+function originToken(origin) {
+  return tokens.get(origin) || remember(tokens, origin, encode(origin));
+}
+
 function decode(token) {
+  if (origins.has(token)) return origins.get(token);
+  let origin = null;
   try {
     const binary = atob(token.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(token.length / 4) * 4, '='));
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
+    origin = new TextDecoder().decode(bytes);
   } catch {
-    return null;
+    origin = null;
   }
+  return remember(origins, token, origin);
 }
 
 /**
@@ -39,6 +68,11 @@ function decode(token) {
  * looked half empty. Keeping the path means that import becomes
  * /_p/<same token>/resources/js/nlog2.js, which maps back to the right file.
  */
+export function proxyPathFromUrl(url) {
+  const path = url.pathname.startsWith('/') ? url.pathname : `/${url.pathname}`;
+  return `${PROXY_PATH}${originToken(url.origin)}${path}${url.search}`;
+}
+
 export function proxyPathFor(absoluteUrl) {
   let url;
   try {
@@ -46,8 +80,7 @@ export function proxyPathFor(absoluteUrl) {
   } catch {
     return null;
   }
-  const path = url.pathname.startsWith('/') ? url.pathname : `/${url.pathname}`;
-  return `${PROXY_PATH}${encode(url.origin)}${path}${url.search}`;
+  return proxyPathFromUrl(url);
 }
 
 /**
@@ -78,7 +111,7 @@ export function targetFromProxyPath(pathname, search = '') {
  * URL, relative to the URL the page was actually served from.
  * Returns null for schemes we deliberately leave untouched.
  */
-export function resolveUrl(base, ref) {
+export function resolveUrlObject(base, ref) {
   if (typeof ref !== 'string') return null;
   const raw = ref.trim();
   if (!raw || raw.startsWith('#')) return null;
@@ -86,10 +119,22 @@ export function resolveUrl(base, ref) {
   try {
     const url = new URL(raw, base);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-    return url.href;
+    return url;
   } catch {
     return null;
   }
+}
+
+/**
+ * The same, as a string.
+ *
+ * Rewriting a reference needs the parsed URL, not its text: `proxyPathFor(href)`
+ * parsed every absolute URL a second time. Callers that build a proxy path use
+ * resolveUrlObject + proxyPathFromUrl instead.
+ */
+export function resolveUrl(base, ref) {
+  const url = resolveUrlObject(base, ref);
+  return url ? url.href : null;
 }
 
 /** Used by the "open this address" box, where the scheme may be missing. */

@@ -1,4 +1,4 @@
-import { proxyPathFor, resolveUrl } from './url.js';
+import { proxyPathFromUrl, resolveUrlObject } from './url.js';
 
 /**
  * The rewriting *rules* both runtimes share.
@@ -66,8 +66,8 @@ const META_REFRESH_RE = /url\s*=\s*['"]?([^'";]+)/i;
 
 /** A reference found in a page -> the URL our browser should request instead. */
 export function proxyTarget(ref, base) {
-  const absolute = resolveUrl(base, ref);
-  return absolute ? proxyPathFor(absolute) : null;
+  const url = resolveUrlObject(base, ref);
+  return url ? proxyPathFromUrl(url) : null;
 }
 
 /** Rewrite the URL inside <meta http-equiv="refresh" content="0; url=...">. */
