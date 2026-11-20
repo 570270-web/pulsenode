@@ -1,7 +1,7 @@
 import { applySetCookies, cookieHeaderFrom, readSession, readSiteCookie, sessionCookie, siteCookie } from '../src/cookies.js';
 import { rewriteCss } from '../src/css.js';
 import { renderErrorPage, renderHome, renderSearch, renderSearchFailed } from '../src/pages.js';
-import { requestKind } from '../src/request-kind.js';
+import { isNestedDocument, requestKind } from '../src/request-kind.js';
 import { isDroppedHeader } from '../src/response-headers.js';
 import { fallbackTarget, isDocumentRequest } from '../src/root-fallback.js';
 import { challengeMessage, isChallengePage, redirectStatus, upstreamHeaders } from '../src/upstream.js';
@@ -54,6 +54,8 @@ async function proxy(request, requestUrl, env, explicitTarget) {
   });
   // What the browser will do with the body decides whether it is markup.
   const requestType = requestKind(request.headers.get('sec-fetch-dest'));
+  // A frame's document gets its own <base href>, see rewriteHtmlResponse.
+  const nested = isNestedDocument(request.headers.get('sec-fetch-dest'));
   const withSession = (response, siteOrigin) => {
     if (!isNew && !siteOrigin) return response;
     const out = new Response(response.body, response);
@@ -122,7 +124,7 @@ async function proxy(request, requestUrl, env, explicitTarget) {
     if (upstream.ok && upstream.body && requestType === 'page') {
       const finalUrl = upstream.url || target;
       return withSession(
-        html(rewriteHtmlResponse(upstream, finalUrl).body, upstream.status),
+        html(rewriteHtmlResponse(upstream, finalUrl, { nested }).body, upstream.status),
         isDocument ? new URL(finalUrl).origin : null,
       );
     }
@@ -156,7 +158,7 @@ async function proxy(request, requestUrl, env, explicitTarget) {
 
     if (isChallengePage(upstream.status, raw)) return withSession(fail(502, challengeMessage(target)));
     return withSession(
-      html(await rewriteHtml(raw, upstream.url || target), upstream.status),
+      html(await rewriteHtml(raw, upstream.url || target, { nested }), upstream.status),
       isDocument ? new URL(upstream.url || target).origin : null,
     );
   }
