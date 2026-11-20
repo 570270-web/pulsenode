@@ -275,8 +275,12 @@ const CODE = `
    * The sender is one of our frames and therefore readable, so the site it
    * stands for is the truthful answer. Only a message whose raw origin is ours
    * is touched: a real third-party frame keeps its own origin.
+   *
+   * Top page only. A frame keeps the raw origins, because a site stores the
+   * origin it was messaged from and answers to it (the gameframe replies with
+   * the origin it learned), and that answer has to keep naming this proxy.
    */
-  var messageOriginDescriptor = Object.getOwnPropertyDescriptor(MessageEvent.prototype, 'origin');
+  var messageOriginDescriptor = window === window.top ? Object.getOwnPropertyDescriptor(MessageEvent.prototype, 'origin') : null;
   if (messageOriginDescriptor && messageOriginDescriptor.get) {
     try {
       Object.defineProperty(MessageEvent.prototype, 'origin', {
@@ -304,43 +308,6 @@ const CODE = `
     } catch (error) {
       // Not redefinable here; the browser's own value stays.
     }
-  }
-
-  // The site this document's parent frame stands for, or null when there is no
-  // parent of ours. A frame that answers its portal names the PORTAL's origin as
-  // the target, not its own.
-  var parentSiteOrigin = function () {
-    try {
-      if (window.parent && window.parent !== window) return originFromAddress(window.parent.location.href);
-    } catch (error) {
-      // A cross-origin parent: only this document's own site can be named.
-    }
-    return null;
-  };
-
-  /*
-   * The mirror image: a page that names the site's own address as targetOrigin.
-   *
-   * The browser will not deliver a message to a window whose origin is neither
-   * a wildcard nor the one named, and inside the proxy that named address is us. Only
-   * the two addresses a document here can legitimately mean are translated —
-   * the site it is served for and the one its parent frame stands for.
-   */
-  var postMessageOriginal = window.postMessage;
-  if (postMessageOriginal) {
-    window.postMessage = function (message, targetOrigin) {
-      var args = Array.prototype.slice.call(arguments);
-      if (typeof targetOrigin === 'string' && targetOrigin !== '*' && targetOrigin !== location.origin) {
-        var named = null;
-        try {
-          named = new URL(targetOrigin).origin;
-        } catch (error) {
-          named = null;
-        }
-        if (named && (named === siteOrigin || named === parentSiteOrigin())) args[1] = location.origin;
-      }
-      return postMessageOriginal.apply(this, args);
-    };
   }
 
   // Same shape the server produces: /_p/<base64url origin><target path>.
