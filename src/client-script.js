@@ -154,6 +154,32 @@ const CODE = `
     return siteOrigin + path + withoutSiteParam(location.search);
   };
 
+  /**
+   * The site an address of ours stands for, read from the address itself.
+   *
+   * siteOriginOf answers only for THIS document's own token, which is enough
+   * for its own links. A message arrives from a frame that stands for another
+   * site (the gameframe is not the portal), so the token has to come out of the
+   * sender's address instead.
+   */
+  var originFromAddress = (href) => {
+    var url;
+    try {
+      url = new URL(href);
+    } catch (error) {
+      return null;
+    }
+    if (url.origin !== location.origin) return url.origin;
+    if (url.pathname.indexOf('/_p/') === 0) {
+      var rest = url.pathname.slice(4);
+      var slash = rest.indexOf('/');
+      var decoded = decode(slash === -1 ? rest : rest.slice(0, slash));
+      if (decoded) return decoded;
+    }
+    var param = url.searchParams.get(siteParam);
+    return param ? decode(param) : null;
+  };
+
   // The site origin one of our addresses stands for: either the /_p/<token>
   // prefix or the ?_pl=<token> marker the address bar keeps.
   var siteOriginOf = (href) => {
@@ -185,7 +211,7 @@ const CODE = `
     if (value !== location.origin) return value;
     try {
       if (window.parent && window.parent !== window) {
-        var fromParent = siteOriginOf(window.parent.location.href);
+        var fromParent = originFromAddress(window.parent.location.href);
         if (fromParent) return fromParent;
       }
     } catch (error) {
@@ -267,7 +293,7 @@ const CODE = `
           }
           if (!sender) return raw;
           try {
-            return siteOriginOf(sender.location.href) || raw;
+            return originFromAddress(sender.location.href) || raw;
           } catch (error) {
             // A cross-origin sender: its own origin is the right answer anyway.
             return raw;
@@ -285,7 +311,7 @@ const CODE = `
   // the target, not its own.
   var parentSiteOrigin = function () {
     try {
-      if (window.parent && window.parent !== window) return siteOriginOf(window.parent.location.href);
+      if (window.parent && window.parent !== window) return originFromAddress(window.parent.location.href);
     } catch (error) {
       // A cross-origin parent: only this document's own site can be named.
     }
