@@ -1,7 +1,7 @@
 import { CLIENT_SCRIPT } from '../src/client-script.js';
 import { rewriteCss, rewriteSrcset } from '../src/css.js';
 import { CSP_EQUIVS, URL_ATTRS, isEmbedGuard, proxiedRefreshContent, proxyTarget } from '../src/rewrite-plan.js';
-import { resolveUrl } from '../src/url.js';
+import { proxyBasePath, resolveUrl } from '../src/url.js';
 
 /**
  * Cloudflare Workers ship HTMLRewriter, a streaming parser. It applies the same
@@ -51,9 +51,15 @@ function transcode(body, charset) {
  * `base` lives in this closure: the <base href> handler sets it before the URL
  * pass runs, so every later handler sees the right base. A fresh call per
  * document keeps two concurrent requests from sharing it.
+ *
+ * `nested` marks a document loaded into a frame: its own <base href> is added
+ * so that relative URLs it builds at runtime (Unity reads `Build/x.data.br`
+ * through the DOM) stay on the game's proxied directory, not on whatever path
+ * the parent page gave the frame.
  */
-function rewriterFor(finalUrl) {
+function rewriterFor(finalUrl, { nested = false } = {}) {
   let base = finalUrl;
+  const baseTag = nested ? proxyBasePath(finalUrl) : null;
 
   const rewriter = new HTMLRewriter()
     .on('base[href]', {
@@ -97,6 +103,8 @@ function rewriterFor(finalUrl) {
     .on('head', {
       element(element) {
         element.prepend(CLIENT_SCRIPT, { html: true });
+        // Prepended last, so it lands first — before any relative reference.
+        if (baseTag) element.prepend(`<base href="${baseTag.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">`, { html: true });
       },
     })
     // A guard that refuses to let the site's own frame run here (see
@@ -153,8 +161,8 @@ function sourceFrom(response) {
  * the rewriter to the browser while the document is still downloading, so the
  * CPU is spent per chunk and the response starts arriving sooner.
  */
-export function rewriteHtmlResponse(response, finalUrl) {
-  return rewriterFor(finalUrl).transform(sourceFrom(response));
+export function rewriteHtmlResponse(response, finalUrl, options) {
+  return rewriterFor(finalUrl, options).transform(sourceFrom(response));
 }
 
 /**
@@ -162,7 +170,7 @@ export function rewriteHtmlResponse(response, finalUrl) {
  * has to be recognised by its text, and a script labelled text/html has to be
  * sent on untouched).
  */
-export async function rewriteHtml(html, finalUrl) {
+export async function rewriteHtml(html, finalUrl, options) {
   const source = new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
-  return rewriterFor(finalUrl).transform(source).text();
+  return rewriterFor(finalUrl, options).transform(source).text();
 }
