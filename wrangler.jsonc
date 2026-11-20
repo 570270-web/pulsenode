@@ -1,20 +1,29 @@
 {
-  // Local Workers dev config. `npm run build:worker` produces dist/worker.js.
-  "name": "proxylab",
+  // Worker name. Must match the Worker in the Cloudflare dashboard
+  // (Workers & Pages -> pulsenode), or Workers Builds deploys somewhere else.
+  "name": "pulsenode",
   "main": "dist/worker.js",
+  // dist/worker.js is not committed, so Wrangler compiles it with esbuild
+  // before every `wrangler deploy`. Cloudflare Workers Builds and the GitHub
+  // Actions workflow both run plain `wrangler deploy`, so this is the one
+  // place that keeps them both working.
+  "build": {
+    "command": "npm run build:worker"
+  },
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
   },
   // Cookie jars are stored in D1 on Cloudflare (see worker/jar.js).
-  // Create your own database, then put its id here:
-  //   npx wrangler d1 create proxylab
+  // No database_id on purpose: Wrangler 4.45+ auto-provisions D1 bindings
+  // that have only a name. The first deploy creates `pulsenode`, later
+  // deploys inherit the database already bound to the Worker, so no ID has to
+  // be pasted in here. Remove `database_name` to get `pulsenode-db` instead.
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "proxylab",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_name": "pulsenode"
     }
   ]
 }

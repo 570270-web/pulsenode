@@ -1,13 +1,15 @@
-# Deploy ProxyLab's Cloudflare Worker on every push to main.
+# Deploy the pulsenode Worker on every push to main.
+#
+# Note: the Cloudflare dashboard also runs its own Workers Build (Git
+# integration) on push. Use one of them, or a push deploys twice.
 #
 # One-time setup (repo → Settings → Secrets and variables → Actions):
 #   CLOUDFLARE_API_TOKEN   token with the "Edit Cloudflare Workers" template
 #                          (Workers Scripts:Edit, D1:Edit for the first deploy)
 #   CLOUDFLARE_ACCOUNT_ID  the account id from the Cloudflare dashboard URL
 #
-# Also replace the placeholder `database_id` in wrangler.jsonc with the real
-# one printed by `npx wrangler d1 create proxylab`; otherwise the deploy stops
-# with "Couldn't find a D1 DB with the id".
+# The D1 binding in wrangler.jsonc has no database_id, so the first deploy
+# creates the `pulsenode` database and later deploys inherit it.
 
 name: Deploy Worker
 
@@ -51,6 +53,10 @@ jobs:
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
+          # @v3 installs Wrangler 3.90.0 by default, which cannot read
+          # wrangler.jsonc (supported from 3.91.0) and fails with
+          # "Missing entry-point". Pin Wrangler 4 explicitly.
+          wranglerVersion: "4"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
