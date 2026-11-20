@@ -6,6 +6,7 @@ import { readSiteCookie } from './src/cookies.js';
 import { handleProxy } from './src/proxy.js';
 import { renderErrorPage, renderHome, renderSearch, renderSearchFailed } from './src/pages.js';
 import { fallbackTarget, isDocumentRequest } from './src/root-fallback.js';
+import { KILL_SWITCH_SCRIPT, SERVICE_WORKER_PATHS } from './src/service-worker.js';
 import { searchWeb } from './src/search.js';
 import { SITE_PARAM, normalizeInputUrl, proxyPathFor } from './src/url.js';
 
@@ -74,6 +75,13 @@ const OWN_PATHS = [/^\/$/, /^\/(search|namu|open)(\/|$)/, /^\/_p\//, /^\/assets\
  */
 app.use(rawBody, async (req, res, next) => {
   if (OWN_PATHS.some((pattern) => pattern.test(req.path))) return next();
+
+  // A proxied site's own service worker would take over this whole origin — one
+  // scope shared by every site — so the scripts are answered with a worker that
+  // removes itself (src/service-worker.js).
+  if (SERVICE_WORKER_PATHS.includes(req.path)) {
+    return res.set('cache-control', 'no-store').set('service-worker-allowed', '/').type('text/javascript').send(KILL_SWITCH_SCRIPT);
+  }
 
   const [, query] = String(req.originalUrl || req.url).split('?');
   const target = fallbackTarget({
