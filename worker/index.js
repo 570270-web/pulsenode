@@ -4,6 +4,7 @@ import { renderErrorPage, renderHome, renderSearch, renderSearchFailed } from '.
 import { isNestedDocument, requestKind } from '../src/request-kind.js';
 import { isDroppedHeader } from '../src/response-headers.js';
 import { fallbackTarget, isDocumentRequest } from '../src/root-fallback.js';
+import { SERVICE_WORKER_PATHS, killSwitchWorker } from '../src/service-worker.js';
 import { challengeMessage, isChallengePage, redirectStatus, upstreamHeaders } from '../src/upstream.js';
 import { SITE_PARAM, isBlockedUrl, normalizeInputUrl, proxyPathFor, resolveUrl, targetFromProxyPath } from '../src/url.js';
 import { rewriteHtml, rewriteHtmlResponse } from './html.js';
@@ -209,6 +210,11 @@ async function route(request, env) {
 
   if (path === '/') return html(renderHome());
   if (path === '/favicon.ico') return new Response(null, { status: 204 });
+
+  // A proxied site's own service worker would take over this whole origin — one
+  // scope shared by every site — so the scripts are answered with a worker that
+  // removes itself (src/service-worker.js).
+  if (SERVICE_WORKER_PATHS.includes(path)) return killSwitchWorker();
 
   if (path === '/search') {
     const query = (url.searchParams.get('q') || '').trim();
