@@ -73,6 +73,29 @@ export function proxyPathFromUrl(url) {
   return `${PROXY_PATH}${originToken(url.origin)}${path}${url.search}`;
 }
 
+/**
+ * The /_p/ directory a document's relative references resolve against.
+ *
+ * A document served from /_p/<token>/game/42/index.html has to resolve
+ * `Build/x.data.br` as /_p/<token>/game/42/Build/x.data.br. That is what the
+ * browser does on the site itself, but inside the proxy a frame whose address
+ * was replaced by the portal path would resolve it against the portal instead —
+ * the assets land on /kr/game/... and 404. Injecting this as <base href> keeps
+ * the frame's own directory as the base, whatever the address bar says.
+ */
+export function proxyBasePath(absoluteUrl) {
+  let url;
+  try {
+    url = new URL(absoluteUrl);
+  } catch {
+    return null;
+  }
+  const path = url.pathname.startsWith('/') ? url.pathname : `/${url.pathname}`;
+  // A query string is not part of the directory relative URLs resolve against.
+  const directory = path.slice(0, path.lastIndexOf('/') + 1);
+  return `${PROXY_PATH}${originToken(url.origin)}${directory}`;
+}
+
 export function proxyPathFor(absoluteUrl) {
   let url;
   try {
