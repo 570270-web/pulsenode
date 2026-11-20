@@ -60,7 +60,7 @@ const CODE = `
    * goes to the server's fallback, which sends it back to the right site.
    */
   var rest = location.pathname.slice(prefix.length);
-  if (rest && rest !== '/') {
+  if (rest && rest !== '/' && window === window.top) {
     try {
       var shown = new URL(location.href);
       shown.pathname = rest;
@@ -69,6 +69,33 @@ const CODE = `
       history.replaceState(history.state, '', shown.pathname + shown.search + shown.hash);
     } catch (error) {
       // Not replaceable here (an odd frame); keep the URL as it is.
+    }
+  }
+
+  /*
+   * A nested document stays where it was loaded.
+   *
+   * The strip above is for the page the visitor is *on*; a frame's address is
+   * not visible, and its URL is the base every relative URL in that document
+   * resolves against. A site that expects its frame to be cross-origin can call
+   * history.replaceState on it — in a browser that call throws, here the frame
+   * is same-origin with its parent, so it succeeds. crazygames does exactly
+   * that: the game frame's URL became the portal's own path, Unity's
+   * "Build/x.data.br" then resolved against /kr/game/ instead of the game's own
+   * directory, and the game never started. Keeping the frame on the URL it was
+   * loaded from keeps those relative URLs inside the proxy.
+   */
+  if (window !== window.top) {
+    var pinned = (fn) =>
+      function (state, title, url) {
+        // Same state, same document: only the address the site asked for is dropped.
+        return arguments.length > 2 ? fn.call(this, state, title, null) : fn.call(this, state, title);
+      };
+    try {
+      history.replaceState = pinned(history.replaceState);
+      history.pushState = pinned(history.pushState);
+    } catch (error) {
+      // Not patchable here; the frame keeps whatever the browser gives it.
     }
   }
 
