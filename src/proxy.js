@@ -1,7 +1,7 @@
 import { cookieHeaderFor, resolveSession, sessionCookie, siteCookie, storeCookies } from './cookies.js';
 import { renderErrorPage } from './pages.js';
 import { rewriteCss } from './css.js';
-import { requestKind } from './request-kind.js';
+import { isNestedDocument, requestKind } from './request-kind.js';
 import { isDroppedHeader } from './response-headers.js';
 import { isDocumentRequest } from './root-fallback.js';
 import { rewriteHtml } from './rewrite.js';
@@ -41,6 +41,8 @@ export async function handleProxy(req, res, explicitTarget) {
   const isDocument = isDocumentRequest({ secFetchDest: req.get('sec-fetch-dest'), accept: req.get('accept') });
   // What the browser will do with the body decides whether it is markup.
   const requestType = requestKind(req.get('sec-fetch-dest'));
+  // A frame's document gets its own <base href>, see rewriteHtml.
+  const nested = isNestedDocument(req.get('sec-fetch-dest'));
   if (isNew) res.setHeader('set-cookie', sessionCookie(sid, secure));
 
   const method = req.method === 'HEAD' ? 'GET' : req.method;
@@ -113,7 +115,7 @@ export async function handleProxy(req, res, explicitTarget) {
       const site = siteCookie(new URL(upstream.url || target).origin, secure);
       res.setHeader('set-cookie', isNew ? [sessionCookie(sid, secure), site] : [site]);
     }
-    res.type('text/html; charset=utf-8').status(upstream.status).send(rewriteHtml(raw, upstream.url || target));
+    res.type('text/html; charset=utf-8').status(upstream.status).send(rewriteHtml(raw, upstream.url || target, { nested }));
     return;
   }
 
