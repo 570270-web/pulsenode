@@ -23,3 +23,16 @@ export function requestKind(secFetchDest) {
   }
   return 'other';
 }
+
+/**
+ * Is this document being loaded into a frame of another proxied page?
+ *
+ * The browser says so itself: a subframe request carries `Sec-Fetch-Dest:
+ * iframe` (or frame/embed/object), while a visit from the address bar carries
+ * `document`. A nested document needs its <base href> pinned to its own proxied
+ * directory, because the parent page is free to rewrite the frame's address.
+ */
+export function isNestedDocument(secFetchDest) {
+  const dest = String(secFetchDest || '').toLowerCase();
+  return dest === 'iframe' || dest === 'frame' || dest === 'embed' || dest === 'object';
+}
