@@ -1,21 +1,19 @@
-# Deploy the pulsenode Worker on every push to main.
+# Manual deploy of the pulsenode Worker.
 #
-# Note: the Cloudflare dashboard also runs its own Workers Build (Git
-# integration) on push. Use one of them, or a push deploys twice.
+# Deployments normally come from the Cloudflare Workers Builds Git integration,
+# which runs `npx wrangler deploy` on every push to main. That deploy step
+# compiles dist/worker.js itself via `build.command` in wrangler.jsonc, so this
+# workflow neither needs nor triggers on push: it only exists as a fallback you
+# run by hand from the Actions tab (Run workflow).
 #
 # One-time setup (repo → Settings → Secrets and variables → Actions):
 #   CLOUDFLARE_API_TOKEN   token with the "Edit Cloudflare Workers" template
 #                          (Workers Scripts:Edit, D1:Edit for the first deploy)
 #   CLOUDFLARE_ACCOUNT_ID  the account id from the Cloudflare dashboard URL
-#
-# The D1 binding in wrangler.jsonc has no database_id, so the first deploy
-# creates the `pulsenode` database and later deploys inherit it.
 
-name: Deploy Worker
+name: Deploy Worker (manual)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Never let two deploys race for the same Worker.
@@ -41,14 +39,11 @@ jobs:
           cache: npm
 
       # `npm ci` installs exactly what package-lock.json pins and fails if the
-      # lockfile and package.json disagree, which is the point of keeping it.
+      # lockfile and package.json disagree. Wrangler needs esbuild from here
+      # because `wrangler deploy` runs `npm run build:worker` (wrangler.jsonc's
+      # `build.command`) to bundle dist/worker.js before uploading.
       - name: Install dependencies
         run: npm ci
-
-      # esbuild bundles worker/index.js (plus the shared modules in src/) into
-      # dist/worker.js, which is the file wrangler.jsonc points at.
-      - name: Build Worker bundle
-        run: npm run build:worker
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
