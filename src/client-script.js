@@ -39,6 +39,37 @@ const CODE = `
   if (!siteOrigin) return;
 
   /*
+   * The proxy's origin is shared by every site it serves, and a service worker
+   * is registered per origin, not per site: one scope for all of them. A site's
+   * worker then answers other sites' pages — naver's answered its own portal
+   * with a cached shell, so this script never ran there and the page stayed
+   * empty. Registrations are refused here, and the worker scripts themselves are
+   * served as a kill switch (src/service-worker.js), which also clears one that
+   * is already installed.
+   */
+  if (navigator.serviceWorker) {
+    try {
+      navigator.serviceWorker.register = function () {
+        return Promise.reject(new Error('Service workers are disabled inside this proxy.'));
+      };
+    } catch (error) {
+      // Not assignable here; the kill-switch worker still removes the old one.
+    }
+    try {
+      navigator.serviceWorker.getRegistrations().then(
+        function (registrations) {
+          registrations.forEach(function (registration) {
+            registration.unregister();
+          });
+        },
+        function () {}
+      );
+    } catch (error) {
+      // A browser without getRegistrations keeps whatever is installed.
+    }
+  }
+
+  /*
    * Show the site's own path in the address bar.
    *
    * A single-page app matches location.pathname against its route table. With
