@@ -178,7 +178,11 @@ async function proxy(request, requestUrl, env, explicitTarget) {
   upstream.headers.forEach((value, name) => {
     if (!isDroppedHeader(name)) passthrough.set(name, value);
   });
-  passthrough.set('cache-control', 'no-store');
+  // The site's own caching decision stands. A game's wasm and data are served
+  // `immutable, max-age=…`, and replacing that with no-store made every reload
+  // download the same 21 MB again. A reply that says nothing about caching is
+  // still made uncacheable, as before.
+  if (!passthrough.has('cache-control')) passthrough.set('cache-control', 'no-store');
   return withSession(new Response(upstream.body, { status: upstream.status, headers: passthrough }));
 }
 

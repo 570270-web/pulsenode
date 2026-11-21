@@ -84,12 +84,14 @@ export async function handleProxy(req, res, explicitTarget) {
   upstream.headers.forEach((value, name) => {
     if (!isDroppedHeader(name)) res.setHeader(name, value);
   });
-  res.setHeader('cache-control', 'no-store');
 
   const upstreamType = upstream.headers.get('content-type') || '';
   const kind = upstreamType.toLowerCase();
 
   if (kind.includes('text/html') || kind.includes('application/xhtml')) {
+    // Rewritten markup is per-request; only the untouched passthrough below
+    // keeps the site's own caching.
+    res.setHeader('cache-control', 'no-store');
     const buffer = Buffer.from(await upstream.arrayBuffer());
     const raw = decodeBody(buffer, upstreamType);
 
@@ -120,11 +122,17 @@ export async function handleProxy(req, res, explicitTarget) {
   }
 
   if (kind.includes('text/css')) {
+    res.setHeader('cache-control', 'no-store');
     const buffer = Buffer.from(await upstream.arrayBuffer());
     const css = rewriteCss(decodeBody(buffer, upstreamType), upstream.url || target);
     res.type('text/css; charset=utf-8').status(upstream.status).send(css);
     return;
   }
 
+  // The site's own caching decision stands. A game's wasm and data are served
+  // `immutable, max-age=…`, and replacing that with no-store made every reload
+  // download the same 21 MB again. A reply that says nothing about caching is
+  // still made uncacheable, as before.
+  if (!res.getHeader('cache-control')) res.setHeader('cache-control', 'no-store');
   res.status(upstream.status).send(Buffer.from(await upstream.arrayBuffer()));
 }
